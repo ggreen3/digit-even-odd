@@ -399,9 +399,9 @@
         const oddCount = recentDigits.length - evenCount;
         
         // Simple pattern detection - if 70% or more are even/odd
-        if (evenCount / recentDigits.length >= 0.7) {
+        if (evenCount / recentDigits.length >= 0.8) {
           return 'DIGITODD'; // Bet against the trend (mean reversion)
-        } else if (oddCount / recentDigits.length >= 0.7) {
+        } else if (oddCount / recentDigits.length >= 0.8) {
           return 'DIGITEVEN'; // Bet against the trend (mean reversion)
         }
         
@@ -501,9 +501,9 @@
         
         // Adjust based on recent performance
         if (this.lastTradeOutcome === 'loss') {
-          stake = Math.min(stake * 1.2, this.accountBalance * 0.5);
+          stake = Math.min(stake * 1.2, this.accountBalance * 0.2);
         } else if (this.lastTradeOutcome === 'win') {
-          stake = Math.min(stake * 1.15, this.accountBalance * 0.4);
+          stake = Math.min(stake * 1.15, this.accountBalance * 0.2);
         }
         
         return this.roundStake(Math.max(stake, this.minStake));

@@ -501,9 +501,9 @@
         
         // Adjust based on recent performance
         if (this.lastTradeOutcome === 'loss') {
-          stake = Math.min(stake * 1.5, this.accountBalance * 0.5);
+          stake = Math.min(stake * 1.2, this.accountBalance * 0.5);
         } else if (this.lastTradeOutcome === 'win') {
-          stake = Math.min(stake * 1.2, this.accountBalance * 0.4);
+          stake = Math.min(stake * 1.15, this.accountBalance * 0.4);
         }
         
         return this.roundStake(Math.max(stake, this.minStake));

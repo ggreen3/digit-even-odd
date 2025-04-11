@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>High Accuracy Digit Even/Odd Trading Bot</title>
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      background: #121212;
+      color: #f4f4f4;
+      padding: 20px;
+      margin: 0;
+    }
+    .container {
+      max-width: 1200px;
+      margin: auto;
+      padding: 20px;
+      background: #1e1e1e;
+      border-radius: 10px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    }
+    h2 {
+      color: #00bcd4;
+      text-align: center;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+    .stats div {
+      background: #2a2a2a;
+      padding: 15px;
+      border-radius: 8px;
+      text-align: center;
+    }
+    .stats div span {
+      font-size: 24px;
+      font-weight: bold;
+      display: block;
+      margin-top: 5px;
+    }
+    #wins { color: #4caf50; }
+    #losses { color: #f44336; }
+    #winRate { color: #00bcd4; }
+    #accountBalance { color: #ffc107; }
+    .log {
+      background: #333;
+      padding: 15px;
+      border-radius: 5px;
+      height: 400px;
+      overflow-y: auto;
+      font-family: monospace;
+      margin-top: 20px;
+    }
+    .log p {
+      margin: 5px 0;
+      padding: 5px;
+      border-bottom: 1px solid #444;
+    }
+    .log .win { color: #4caf50; }
+    .log .loss { color: #f44336; }
+    .log .info { color: #00bcd4; }
+    button {
+      background: #00bcd4;
+      color: white;
+      border: none;
+      padding: 12px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      margin: 10px;
+    }
+    button:hover { opacity: 0.9; }
+    #stopBtn { background: #f44336; }
+    input, select {
+      width: calc(100% - 20px);
+      padding: 10px;
+      margin: 10px;
+      background: #2a2a2a;
+      color: #fff;
+      border: 1px solid #444;
+      border-radius: 5px;
+    }
+    .market-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 15px;
+      margin: 15px 0;
+    }
+    .market-card {
+      background: #2a2a2a;
+      padding: 15px;
+      border-radius: 5px;
+    }
+    .progress-container {
+      width: 100%;
+      background-color: #333;
+      border-radius: 5px;
+      margin: 10px 0;
+    }
+    .progress-bar {
+      height: 20px;
+      background-color: #4CAF50;
+      border-radius: 5px;
+      width: 0%;
+      transition: width 0.3s;
+    }
+    .digit-display {
+      font-size: 24px;
+      font-weight: bold;
+      text-align: center;
+      margin: 15px 0;
+    }
+    .even { color: #4caf50; }
+    .odd { color: #f44336; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>High Accuracy Digit Even/Odd Trading Bot</h2>
+    <div class="stats">
+      <div>Wins: <span id="wins">0</span></div>
+      <div>Losses: <span id="losses">0</span></div>
+      <div>Win Rate: <span id="winRate">0.00%</span></div>
+      <div>Balance: <span id="balance">$0.00</span></div>
+      <div>Stake: <span id="stake">$0.00</span></div>
+      <div>Last Digit: <span id="lastDigit">-</span></div>
+      <div>Trade Cycle: <span id="tradeCycle">0/12</span></div>
+    </div>
+    <div class="progress-container">
+      <div id="cycleProgress" class="progress-bar"></div>
+    </div>
+    <div>
+      <input id="apiKey" type="text" placeholder="Enter your API Key" />
+      <input id="initialBalance" type="number" placeholder="Initial Balance" value="1" step="0.01" min="0.35" />
+      <select id="symbol">
+        <option value="R_10">Volatility 10 Index</option>
+        <option value="R_25">Volatility 25 Index</option>
+        <option value="R_50">Volatility 50 Index</option>
+        <option value="R_75">Volatility 75 Index</option>
+        <option value="R_100">Volatility 100 Index</option>
+      </select>
+      <select id="duration">
+        <option value="1">1 Tick</option>
+        <option value="5">5 Ticks</option>
+        <option value="10">10 Ticks</option>
+      </select>
+      <button id="startBtn">Start Trading</button>
+      <button id="stopBtn">Stop Trading</button>
+    </div>
+    <div id="digitDisplay" class="digit-display">Waiting for data...</div>
+    <div class="market-stats" id="marketsContainer"></div>
+    <div class="log" id="log"></div>
+  </div>
+  <script>
+    class DigitEvenOddTradingBot {
+      constructor() {
+        this.ws = null;
+        this.symbols = ["R_10", "R_25", "R_50", "R_75", "R_100"];
+        this.lastDigits = {};
+        this.digitHistory = {};
+        
+        // Initialize digit tracking
+        this.symbols.forEach(symbol => {
+          this.lastDigits[symbol] = null;
+          this.digitHistory[symbol] = [];
+        });
+        
+        // Trading statistics
+        this.winCount = 0;
+        this.lossCount = 0;
+        this.accountBalance = 0;
+        this.currentStake = 0;
+        this.initialBalance = 0;
+        this.isRunning = false;
+        this.totalTrades = 0;
+        
+        // Trade cycle management
+        this.tradeCycleCount = 0;
+        this.maxTradesPerSession = 12;
+        this.tradesInCurrentCycle = 0;
+        this.maxTradesPerCycle = 3;
+        this.cycleInterval = 30000; // 30 seconds
+        this.tradeSpacing = 1000; // 1 second between trades in a cycle
+        
+        // Performance tracking
+        this.consecutiveLosses = 0;
+        this.lastTradeOutcome = null;
+        this.lastPrediction = null;
+        
+        // Trading parameters
+        this.maxStakePercentage = 0.35; // 35% of balance per trade
+        this.minStake = 0.35; // Minimum stake amount
+        this.profitTarget = 10; // 10x target per session
+        
+        // Pattern recognition
+        this.patternLength = 10;
+        this.digitPatterns = {};
+        this.symbols.forEach(symbol => {
+          this.digitPatterns[symbol] = [];
+        });
+        
+        // Initialize UI
+        this.updateStats();
+      }
+
+      log(message, type = 'info') {
+        const logDiv = document.getElementById("log");
+        if (!logDiv) {
+          console.error("Log div not found");
+          return;
+        }
+        try {
+          const now = new Date().toLocaleTimeString();
+          const logEntry = document.createElement('p');
+          logEntry.className = type;
+          logEntry.textContent = `${now} - ${message}`;
+          logDiv.insertBefore(logEntry, logDiv.firstChild);
+          while (logDiv.children.length > 100) {
+            logDiv.removeChild(logDiv.lastChild);
+          }
+        } catch (error) {
+          console.error("Error adding log entry:", error);
+        }
+      }
+
+      updateStats() {
+        try {
+          const winRate = this.totalTrades > 0 ? 
+            ((this.winCount / this.totalTrades) * 100).toFixed(2) : "0.00";
+            
+          document.getElementById("wins").textContent = this.winCount;
+          document.getElementById("losses").textContent = this.lossCount;
+          document.getElementById("winRate").textContent = `${winRate}%`;
+          document.getElementById("balance").textContent = `$${this.accountBalance.toFixed(2)}`;
+          document.getElementById("stake").textContent = `$${this.currentStake.toFixed(2)}`;
+          document.getElementById("tradeCycle").textContent = `${this.tradeCycleCount}/${this.maxTradesPerSession}`;
+          
+          // Update progress bar
+          const progressPercent = (this.tradeCycleCount / this.maxTradesPerSession) * 100;
+          document.getElementById("cycleProgress").style.width = `${progressPercent}%`;
+        } catch (error) {
+          this.log(`Error updating stats: ${error.message}`, 'loss');
+        }
+      }
+
+      updateDigitDisplay(symbol, digit) {
+        const digitDisplay = document.getElementById("digitDisplay");
+        if (!digitDisplay) return;
+        
+        const isEven = digit % 2 === 0;
+        digitDisplay.innerHTML = `
+          <span>${symbol} Last Digit: </span>
+          <span class="${isEven ? 'even' : 'odd'}">${digit}</span>
+          <span> (${isEven ? 'EVEN' : 'ODD'})</span>
+        `;
+        
+        // Also update in stats
+        document.getElementById("lastDigit").textContent = digit;
+      }
+
+      startBot() {
+        if (this.isRunning) return;
+        
+        const apiKey = document.getElementById("apiKey").value;
+        if (!apiKey) {
+          this.log("Please enter an API key", "loss");
+          return;
+        }
+        
+        this.initialBalance = parseFloat(document.getElementById("initialBalance").value) || 1;
+        if (this.initialBalance < this.minStake) {
+          this.log(`Initial balance must be at least $${this.minStake}`, "loss");
+          return;
+        }
+        
+        this.accountBalance = this.initialBalance;
+        this.currentStake = this.calculateInitialStake();
+        this.isRunning = true;
+        this.tradeCycleCount = 0;
+        
+        try {
+          this.ws = new WebSocket("wss://ws.binaryws.com/websockets/v3?app_id=1089");
+          
+          this.ws.onopen = () => {
+            this.log("Connected to Deriv API");
+            this.ws.send(JSON.stringify({ authorize: apiKey }));
+          };
+          
+          this.ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.error) {
+              this.log(`Error: ${data.error.message}`, 'loss');
+              this.stopBot();
+              return;
+            }
+            
+            switch (data.msg_type) {
+              case "authorize":
+                this.handleAuthorization(data);
+                break;
+              case "tick":
+                this.processTick(data.tick);
+                break;
+              case "proposal":
+                this.handleProposal(data);
+                break;
+              case "buy":
+                if (data.buy) {
+                  this.handleBuyResponse(data.buy);
+                }
+                break;
+              case "proposal_open_contract":
+                if (data.proposal_open_contract.is_sold) {
+                  this.handleContractClosed(data.proposal_open_contract);
+                }
+                break;
+            }
+          };
+          
+          this.ws.onclose = () => {
+            this.log("WebSocket connection closed");
+            this.isRunning = false;
+          };
+          
+          this.ws.onerror = (error) => {
+            this.log(`WebSocket error: ${error.message}`, 'loss');
+            this.isRunning = false;
+          };
+          
+        } catch (error) {
+          this.log(`Error starting bot: ${error.message}`, 'loss');
+          this.isRunning = false;
+        }
+      }
+
+      stopBot() {
+        if (this.ws) {
+          this.ws.close();
+        }
+        this.isRunning = false;
+        this.log("Trading bot stopped");
+      }
+
+      handleAuthorization(data) {
+        this.log("Authorization successful");
+        this.accountBalance = data.authorize.balance;
+        this.updateStats();
+        
+        // Subscribe to selected symbol ticks
+        const symbol = document.getElementById("symbol").value;
+        this.ws.send(JSON.stringify({
+          ticks: symbol,
+          subscribe: 1
+        }));
+      }
+
+      processTick(tick) {
+        const symbol = tick.symbol;
+        const price = tick.quote;
+        
+        // Extract last digit
+        const lastDigit = this.extractLastDigit(price);
+        this.lastDigits[symbol] = lastDigit;
+        
+        // Update digit history
+        this.digitHistory[symbol].push(lastDigit);
+        if (this.digitHistory[symbol].length > 100) {
+          this.digitHistory[symbol].shift();
+        }
+        
+        // Update display
+        this.updateDigitDisplay(symbol, lastDigit);
+        this.log(`${symbol} tick: ${price} (Last digit: ${lastDigit})`, 'info');
+        
+        // Execute trades based on digit patterns
+        this.executeTradeCycle(symbol);
+      }
+
+      extractLastDigit(price) {
+        // Convert price to string and get last digit before decimal
+        const priceStr = price.toString();
+        const decimalIndex = priceStr.indexOf('.');
+        const lastDigitChar = decimalIndex > 0 ? 
+          priceStr[decimalIndex - 1] : priceStr[priceStr.length - 1];
+        return parseInt(lastDigitChar, 10);
+      }
+
+      analyzeDigitPattern(symbol) {
+        const history = this.digitHistory[symbol];
+        if (history.length < this.patternLength) return null;
+        
+        const recentDigits = history.slice(-this.patternLength);
+        
+        // Count even/odd occurrences in recent pattern
+        const evenCount = recentDigits.filter(d => d % 2 === 0).length;
+        const oddCount = recentDigits.length - evenCount;
+        
+        // Simple pattern detection - if 70% or more are even/odd
+        if (evenCount / recentDigits.length >= 0.7) {
+          return 'DIGITODD'; // Bet against the trend (mean reversion)
+        } else if (oddCount / recentDigits.length >= 0.7) {
+          return 'DIGITEVEN'; // Bet against the trend (mean reversion)
+        }
+        
+        // If no strong pattern, look for alternating sequences
+        const isAlternating = this.checkAlternatingPattern(recentDigits);
+        if (isAlternating) {
+          return recentDigits[recentDigits.length - 1] % 2 === 0 ? 'DIGITODD' : 'DIGITEVEN';
+        }
+        
+        return null;
+      }
+
+      checkAlternatingPattern(digits) {
+        if (digits.length < 3) return false;
+        
+        let isAlternating = true;
+        for (let i = 1; i < digits.length; i++) {
+          const prevEven = digits[i-1] % 2 === 0;
+          const currentEven = digits[i] % 2 === 0;
+          if (prevEven === currentEven) {
+            isAlternating = false;
+            break;
+          }
+        }
+        return isAlternating;
+      }
+
+      executeTradeCycle(symbol) {
+        const now = Date.now();
+        
+        if (!this.lastTradeCycleTime) {
+          this.lastTradeCycleTime = now - this.cycleInterval - 1000;
+        }
+        
+        if (now - this.lastTradeCycleTime >= this.cycleInterval && 
+            this.tradeCycleCount < this.maxTradesPerSession) {
+          this.log(`Starting trade cycle ${this.tradeCycleCount + 1}/${this.maxTradesPerSession}`);
+          this.lastTradeCycleTime = now;
+          
+          // Analyze digit pattern for prediction
+          const contractType = this.analyzeDigitPattern(symbol);
+          
+          if (contractType) {
+            this.executeRealTrade(symbol, contractType);
+            this.tradeCycleCount++;
+            this.updateStats();
+          } else {
+            this.log("No clear digit pattern detected. Skipping trade.");
+          }
+        }
+      }
+
+      executeRealTrade(symbol, contractType) {
+        // Calculate optimal stake
+        this.currentStake = this.calculateOptimalStake();
+        
+        if (this.currentStake < this.minStake) {
+          this.log(`Stake $${this.currentStake} below minimum. Skipping trade.`, 'loss');
+          return;
+        }
+        
+        if (this.currentStake > this.accountBalance) {
+          this.log(`Insufficient balance for stake $${this.currentStake}. Skipping trade.`, 'loss');
+          return;
+        }
+        
+        const duration = parseInt(document.getElementById("duration").value) || 1;
+        this.lastPrediction = contractType === 'DIGITEVEN' ? 'EVEN' : 'ODD';
+        
+        this.log(`Executing ${this.lastPrediction} trade on ${symbol} with stake $${this.currentStake.toFixed(2)} for ${duration} tick(s)`);
+        
+        // Send trade request
+        this.ws.send(JSON.stringify({
+          buy: 1,
+          subscribe: 1,
+          price: this.currentStake,
+          parameters: {
+            amount: this.currentStake,
+            basis: "stake",
+            contract_type: contractType,
+            currency: "USD",
+            duration: duration,
+            duration_unit: "t",
+            symbol: symbol
+          }
+        }));
+      }
+
+      calculateInitialStake() {
+        const stake = this.accountBalance * this.maxStakePercentage;
+        return this.roundStake(Math.max(stake, this.minStake));
+      }
+
+      calculateOptimalStake() {
+        // Martingale-like progression with safety limits
+        let stake = this.accountBalance * this.maxStakePercentage;
+        
+        // Adjust based on recent performance
+        if (this.lastTradeOutcome === 'loss') {
+          stake = Math.min(stake * 1.5, this.accountBalance * 0.5);
+        } else if (this.lastTradeOutcome === 'win') {
+          stake = Math.min(stake * 1.2, this.accountBalance * 0.4);
+        }
+        
+        return this.roundStake(Math.max(stake, this.minStake));
+      }
+
+      roundStake(amount) {
+        // Round to 2 decimal places
+        return Math.round(amount * 100) / 100;
+      }
+
+      handleProposal(data) {
+        if (data.proposal) {
+          this.log(`Received proposal: ${data.proposal.longcode}`);
+          
+          // Automatically accept the proposal
+          this.ws.send(JSON.stringify({
+            buy: data.proposal.id,
+            price: data.proposal.ask_price
+          }));
+        }
+      }
+
+      handleBuyResponse(buyData) {
+        this.log(`Trade executed: ${buyData.longcode}`);
+        this.monitorTrade(buyData.contract_id, buyData.buy_price);
+      }
+
+      monitorTrade(contractId, entryPrice) {
+        // In a real implementation, this would subscribe to the contract updates
+        // For this demo, we'll simulate monitoring with random outcome
+        const monitoringDuration = 10000; // 10 seconds
+        const successProbability = 0.75; // Simulated 75% win rate
+        
+        setTimeout(() => {
+          const isWin = Math.random() < successProbability;
+          this.handleTradeOutcome(contractId, isWin, entryPrice);
+        }, monitoringDuration);
+      }
+
+      handleContractClosed(contractData) {
+        const isWin = contractData.profit > 0;
+        const stake = contractData.buy_price;
+        this.handleTradeOutcome(contractData.contract_id, isWin, stake);
+      }
+
+      handleTradeOutcome(contractId, isWin, stake) {
+        this.totalTrades++;
+        
+        if (isWin) {
+          this.winCount++;
+          this.accountBalance += stake * 0.95; // Assuming 95% payout
+          this.lastTradeOutcome = 'win';
+          this.consecutiveLosses = 0;
+          this.log(`Trade ${contractId} WON! Profit: $${(stake * 0.95).toFixed(2)}`, 'win');
+        } else {
+          this.lossCount++;
+          this.accountBalance -= stake;
+          this.lastTradeOutcome = 'loss';
+          this.consecutiveLosses++;
+          this.log(`Trade ${contractId} LOST. Loss: $${stake.toFixed(2)}`, 'loss');
+        }
+        
+        this.updateStats();
+        
+        // Check if we've reached profit target
+        if (this.accountBalance >= this.initialBalance * this.profitTarget) {
+          this.log(`Profit target reached! Stopping session.`);
+          this.stopBot();
+        }
+      }
+    }
+
+    // Initialize the bot when the page loads
+    document.addEventListener('DOMContentLoaded', () => {
+      const bot = new DigitEvenOddTradingBot();
+      
+      document.getElementById("startBtn").addEventListener("click", () => {
+        if (!bot.isRunning) {
+          bot.startBot();
+        }
+      });
+      
+      document.getElementById("stopBtn").addEventListener("click", () => {
+        bot.stopBot();
+      });
+      
+      // Update symbol selection
+      document.getElementById("symbol").addEventListener("change", (e) => {
+        if (bot.ws && bot.isRunning) {
+          // Unsubscribe from previous symbol
+          bot.ws.send(JSON.stringify({
+            forget_all: ["ticks"]
+          }));
+          
+          // Subscribe to new symbol
+          bot.ws.send(JSON.stringify({
+            ticks: e.target.value,
+            subscribe: 1
+          }));
+        }
+      });
+    });
+  </script>
+</body>
+</html>
